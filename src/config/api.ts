@@ -22,3 +22,44 @@ const getApiUrl = () => {
 };
 
 export const API_URL = getApiUrl();
+
+/**
+ * A fetch wrapper that supports timeout and abort signals.
+ * Differentiates between Timeout, Abort, and normal Network errors.
+ */
+export const fetchWithTimeout = async (
+  resource: string,
+  options: RequestInit & { timeout?: number } = {}
+) => {
+  const { timeout = 10000, ...fetchOptions } = options;
+  
+  // Create an internal abort controller if the user didn't provide a signal,
+  // or wrap the existing signal to also handle timeouts.
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+
+  // If a signal was passed in, listen to it
+  if (options.signal) {
+    options.signal.addEventListener('abort', () => {
+      controller.abort();
+    });
+  }
+
+  try {
+    const response = await fetch(resource, {
+      ...fetchOptions,
+      signal: controller.signal,
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error: any) {
+    clearTimeout(id);
+    if (error.name === 'AbortError') {
+      // Check if it was our timeout that aborted it
+      if (!options.signal?.aborted) {
+        throw new Error('Request Timeout');
+      }
+    }
+    throw error;
+  }
+};

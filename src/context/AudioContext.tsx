@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 import { useAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
 
 export interface Track {
@@ -98,6 +99,19 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, []);
 
+  useEffect(() => {
+    if (currentTrack) {
+      player.setActiveForLockScreen(true, {
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        albumTitle: currentTrack.album,
+        artworkUrl: currentTrack.artworkUrl,
+      });
+    } else {
+      player.clearLockScreenControls();
+    }
+  }, [currentTrack, player]);
+
   // We can track didJustFinish from player natively
   useEffect(() => {
     const subscription = player.addListener('playbackStatusUpdate', (status) => {
@@ -125,7 +139,18 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [player]);
 
 
+  const transitionIdRef = useRef<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const resolveAndPlay = async (track: Track) => {
+    const currentTransition = ++transitionIdRef.current;
+    
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsResolving(true);
     setCurrentTrack(track);
     player.pause(); // Stop current playback immediately
@@ -135,33 +160,46 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       
       if (!finalAudioUrl && track.id) {
         const { API_URL } = require('../config/api');
-        const res = await fetch(`${API_URL}/api/stream?id=${track.id}`);
+        const res = await fetch(`${API_URL}/api/stream?id=${track.id}`, { signal: controller.signal });
         if (!res.ok) {
            console.log('Backend error:', res.status);
-           setIsResolving(false);
+           if (currentTransition === transitionIdRef.current) setIsResolving(false);
            return;
         }
         const data = await res.json();
         finalAudioUrl = data.audioUrl;
       }
       
+      // If user pressed Next/Previous again while we were fetching the URL, 
+      // do NOT overwrite the newer track's state with this old one.
+      if (currentTransition !== transitionIdRef.current) {
+        console.log(`[AudioContext] Aborting stale track transition for ${track.title}`);
+        return;
+      }
+
       if (!finalAudioUrl) {
          console.log('PLAYER SOURCE error: No finalAudioUrl resolved.');
-         setIsResolving(false);
+         if (currentTransition === transitionIdRef.current) setIsResolving(false);
          return;
       }
 
       player.replace(finalAudioUrl);
       player.play();
-    } catch (error) {
-      console.error("Error playing track:", error);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log(`[AudioContext] Fetch aborted for ${track.title}`);
+      } else {
+        console.error("Error playing track:", error);
+      }
     } finally {
-      setIsResolving(false);
+      if (currentTransition === transitionIdRef.current) {
+        setIsResolving(false);
+      }
     }
   };
 
   const playTrack = async (track: Track, newContext?: PlaybackContextData) => {
-    const { shuffleMode: isShuffle } = stateRef.current;
+    const { currentTrack: ct, shuffleMode: isShuffle } = stateRef.current;
     
     if (newContext) {
       setPlaybackContext(newContext);
@@ -174,6 +212,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
     
+    // If selecting the exact same track that is already playing/paused, just resume it
+    if (ct && ct.id === track.id) {
+      if (!player.playing) {
+         player.play();
+      }
+      return;
+    }
+
     await resolveAndPlay(track);
   };
 

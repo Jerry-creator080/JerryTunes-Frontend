@@ -4,6 +4,7 @@ import { useTheme } from '../theme/useTheme';
 import { useAudio } from '../context/AudioContext';
 import { useAudioPlayerStatus } from 'expo-audio';
 import { useLibrary } from '../context/LibraryContext';
+import { useOffline } from '../context/OfflineContext';
 import { Artwork } from '../components/Artwork';
 import { IconButton } from '../components/IconButton';
 import Slider from '@react-native-community/slider';
@@ -33,14 +34,34 @@ export const NowPlayingScreen = () => {
     shuffleMode, repeatMode, toggleShuffle, toggleRepeat 
   } = useAudio();
   const status = useAudioPlayerStatus(player);
+  
+  const [localTrackId, setLocalTrackId] = React.useState(currentTrack?.id);
+  const [staleLock, setStaleLock] = React.useState(false);
+
+  React.useEffect(() => {
+    if (currentTrack?.id !== localTrackId) {
+      setLocalTrackId(currentTrack?.id);
+      setStaleLock(true);
+    }
+  }, [currentTrack?.id, localTrackId]);
+
+  React.useEffect(() => {
+    // Release the stale lock when the native player actually resets its progress back to near zero.
+    // If user seeks before it plays, staleLock might stay, but we clear it aggressively on any < 1 time.
+    if (staleLock && status.currentTime < 1) {
+      setStaleLock(false);
+    }
+  }, [status.currentTime, staleLock]);
+
   const isPlaying = status.playing || isResolving;
-  const position = status.currentTime * 1000;
+  const position = isResolving || staleLock ? 0 : status.currentTime * 1000;
   
   // Natively, AVPlayer miscalculates remote VBR m4a duration (often exactly doubling it).
   // We use the absolute source of truth from YouTube metadata instead.
   const parsedDuration = currentTrack?.duration ? parseDurationToMs(currentTrack.duration) : 0;
   const duration = parsedDuration > 0 ? parsedDuration : status.duration * 1000;
   const { isFavorite, toggleFavorite } = useLibrary();
+  const { downloadProgress } = useOffline();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
 
@@ -78,7 +99,7 @@ export const NowPlayingScreen = () => {
 
       {/* Artwork */}
       <View style={[styles.artworkContainer, { marginVertical: spacing.xl }]}>
-        <Artwork url={currentTrack.artworkUrl} size={ARTWORK_SIZE} style={styles.artwork} />
+        <Artwork key={currentTrack.id} url={currentTrack.artworkUrl} size={ARTWORK_SIZE} style={styles.artwork} />
       </View>
 
       {/* Info */}
@@ -103,6 +124,19 @@ export const NowPlayingScreen = () => {
 
       {/* Progress */}
       <View style={[styles.progressContainer, { paddingHorizontal: spacing.lg }]}>
+        {downloadProgress[currentTrack.id] !== undefined && downloadProgress[currentTrack.id] > 0 && downloadProgress[currentTrack.id] < 1 && (
+          <View style={{
+            position: 'absolute',
+            left: spacing.lg,
+            height: 4,
+            top: 18,
+            backgroundColor: colors.primary,
+            opacity: 0.3,
+            borderRadius: 2,
+            width: `${downloadProgress[currentTrack.id] * 100}%`,
+            maxWidth: width - spacing.lg * 2
+          }} />
+        )}
         <Slider
           style={styles.slider}
           minimumValue={0}

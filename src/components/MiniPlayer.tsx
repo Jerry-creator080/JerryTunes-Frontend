@@ -43,7 +43,7 @@ export const MiniPlayer = () => {
       activeOpacity={0.9}
       onPress={() => navigation.navigate('NowPlaying')}
     >
-      <Artwork url={currentTrack.artworkUrl} size={40} style={{ borderRadius: radius.sm }} />
+      <Artwork key={currentTrack.id} url={currentTrack.artworkUrl} size={40} style={{ borderRadius: radius.sm }} />
       <View style={[styles.info, { marginLeft: spacing.md }]}>
         <Text style={{ color: colors.text, fontSize: typography.sizes.sm, fontWeight: typography.weights.medium }} numberOfLines={1}>{currentTrack.title}</Text>
         <Text style={{ color: colors.textSecondary, fontSize: typography.sizes.xs }} numberOfLines={1}>
