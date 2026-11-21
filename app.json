@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "JerryTunes",
-    "slug": "JerryTunes",
+    "name": "Koda",
+    "slug": "koda-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -44,7 +44,8 @@
           "backgroundModeEnabled": true
         }
       ],
-      "expo-video"
+      "expo-video",
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {

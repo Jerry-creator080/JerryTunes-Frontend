@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import { useAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
+import { useSleepTimer } from './SleepTimerContext';
+import { useOffline } from './OfflineContext';
+import { useAudioSettings } from './AudioSettingsContext';
+import { useHistory } from './HistoryContext';
 
 export interface Track {
   id: string;
@@ -8,12 +12,13 @@ export interface Track {
   artist: string;
   channelId?: string;
   album: string;
+  trackNumber?: number;
   duration: string;
   artworkUrl?: string;
   audioUrl?: string;
 }
 
-export type PlaybackSource = 'search' | 'playlist' | 'recently_played' | 'favorites' | 'downloads' | 'library';
+export type PlaybackSource = 'search' | 'playlist' | 'recently_played' | 'favorites' | 'downloads' | 'library' | 'quick_picks' | 'trending' | 'album' | 'artist';
 
 export interface PlaybackContextData {
   source: PlaybackSource;
@@ -29,7 +34,7 @@ interface AudioContextType {
   repeatMode: 'none' | 'all' | 'one';
   isResolving: boolean;
   player: AudioPlayer;
-  
+
   playTrack: (track: Track, context?: PlaybackContextData) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -39,6 +44,9 @@ interface AudioContextType {
   toggleShuffle: () => void;
   toggleRepeat: () => void;
   addToQueue: (track: Track) => void;
+  removeFromQueue: (index: number) => void;
+  reorderQueue: (fromIndex: number, toIndex: number) => void;
+  setFullQueue: (tracks: Track[]) => void;
   clearQueue: () => void;
 }
 
@@ -66,24 +74,43 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [shuffleMode, setShuffleMode] = useState(false);
   const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('none');
   const [isResolving, setIsResolving] = useState(false);
-  
+
   // Shuffled mapping: keeps track of playback order when shuffle is enabled
   const [shuffledIndices, setShuffledIndices] = useState<number[]>([]);
 
-  const player = useAudioPlayer(null, { 
-    updateInterval: 500, 
+  const { isOfflineOnly } = useOffline();
+  const { streamingQuality } = useAudioSettings();
+  const { isEndOfTrack, clearTimer, setOnTimerFinish, setOnVolumeFade } = useSleepTimer();
+  const { addTrackToHistory } = useHistory();
+
+  const player = useAudioPlayer(null, {
+    updateInterval: 500,
     keepAudioSessionActive: true,
     preferredForwardBufferDuration: 30 // Aggressively cache up to 30s ahead to defeat temporary network lags
   });
 
+  useEffect(() => {
+    setOnTimerFinish(() => {
+      player.pause();
+      try {
+        player.volume = 1.0;
+      } catch (e) {}
+    });
+    setOnVolumeFade((factor: number) => {
+      try {
+        player.volume = Math.max(0, Math.min(1, factor));
+      } catch (e) {}
+    });
+  }, [player, setOnTimerFinish, setOnVolumeFade]);
+
   // Use refs for callbacks that need latest state inside event listeners
-  const stateRef = useRef({ 
-    currentTrack, 
-    playbackContext, 
-    queue, 
-    repeatMode, 
-    shuffleMode, 
-    shuffledIndices 
+  const stateRef = useRef({
+    currentTrack,
+    playbackContext,
+    queue,
+    repeatMode,
+    shuffleMode,
+    shuffledIndices
   });
 
   useEffect(() => {
@@ -104,8 +131,15 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       player.setActiveForLockScreen(true, {
         title: currentTrack.title,
         artist: currentTrack.artist,
-        albumTitle: currentTrack.album,
+        albumTitle: currentTrack.album || 'JerryTunes',
         artworkUrl: currentTrack.artworkUrl,
+      }, {
+        showSeekForward: true,
+        showSeekBackward: true,
+        showNextTrack: true,
+        showPreviousTrack: true,
+        seekForwardIntervalSeconds: 10,
+        seekBackwardIntervalSeconds: 10,
       });
     } else {
       player.clearLockScreenControls();
@@ -144,7 +178,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resolveAndPlay = async (track: Track) => {
     const currentTransition = ++transitionIdRef.current;
-    
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -154,22 +188,50 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsResolving(true);
     setCurrentTrack(track);
     player.pause(); // Stop current playback immediately
-    
+
     try {
       let finalAudioUrl = track.audioUrl;
-      
+
+      // Check if local downloaded file exists (instant offline playback)
+      if (!finalAudioUrl && track.id) {
+        try {
+          const { Paths, File } = require('expo-file-system');
+          const localMp3 = new File(Paths.document, `track_${track.id}.mp3`);
+          if (localMp3.exists) {
+            finalAudioUrl = localMp3.uri;
+            console.log(`[AudioContext] Playing offline local file: ${finalAudioUrl}`);
+          }
+        } catch (e) {
+          // Fall through to remote
+        }
+      }
+
+      if (isOfflineOnly && !finalAudioUrl) {
+        setIsResolving(false);
+        Alert.alert(
+          'Offline Mode Active',
+          'This track is not downloaded for offline playback. Disable Offline Mode in Settings or download the track first.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
       if (!finalAudioUrl && track.id) {
         const { API_URL } = require('../config/api');
-        const res = await fetch(`${API_URL}/api/stream?id=${track.id}`, { signal: controller.signal });
+        const queryParam = track.id.startsWith('itunes_')
+          ? `query=${encodeURIComponent(`${track.title} ${track.artist}`)}`
+          : `id=${encodeURIComponent(track.id)}`;
+        const qualityParam = `&quality=${streamingQuality}`;
+        const res = await fetch(`${API_URL}/api/stream?${queryParam}${qualityParam}`, { signal: controller.signal });
         if (!res.ok) {
-           console.log('Backend error:', res.status);
-           if (currentTransition === transitionIdRef.current) setIsResolving(false);
-           return;
+          console.log('Backend error:', res.status);
+          if (currentTransition === transitionIdRef.current) setIsResolving(false);
+          return;
         }
         const data = await res.json();
         finalAudioUrl = data.audioUrl;
       }
-      
+
       // If user pressed Next/Previous again while we were fetching the URL, 
       // do NOT overwrite the newer track's state with this old one.
       if (currentTransition !== transitionIdRef.current) {
@@ -178,13 +240,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       if (!finalAudioUrl) {
-         console.log('PLAYER SOURCE error: No finalAudioUrl resolved.');
-         if (currentTransition === transitionIdRef.current) setIsResolving(false);
-         return;
+        console.log('PLAYER SOURCE error: No finalAudioUrl resolved.');
+        if (currentTransition === transitionIdRef.current) setIsResolving(false);
+        return;
       }
 
       player.replace(finalAudioUrl);
       player.play();
+      addTrackToHistory(track);
     } catch (error: any) {
       if (error.name === 'AbortError') {
         console.log(`[AudioContext] Fetch aborted for ${track.title}`);
@@ -200,10 +263,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const playTrack = async (track: Track, newContext?: PlaybackContextData) => {
     const { currentTrack: ct, shuffleMode: isShuffle } = stateRef.current;
-    
+
     if (newContext) {
       setPlaybackContext(newContext);
-      
+
       if (isShuffle) {
         const startIndex = newContext.tracks.findIndex(t => t.id === track.id);
         setShuffledIndices(generateShuffledIndices(newContext.tracks.length, startIndex));
@@ -211,11 +274,11 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setShuffledIndices([]);
       }
     }
-    
+
     // If selecting the exact same track that is already playing/paused, just resume it
     if (ct && ct.id === track.id) {
       if (!player.playing) {
-         player.play();
+        player.play();
       }
       return;
     }
@@ -261,9 +324,15 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const handleTrackFinish = async () => {
+    if (isEndOfTrack) {
+      clearTimer();
+      player.pause();
+      return;
+    }
+
     const { currentTrack: ct, queue: q, repeatMode: rm } = stateRef.current;
     if (!ct) return;
-    
+
     if (rm === 'one') {
       await resolveAndPlay(ct);
       return;
@@ -285,7 +354,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const next = async () => {
     const { queue: q } = stateRef.current;
-    
+
     // Explicit queue takes precedence
     if (q.length > 0) {
       const nextQTrack = q[0];
@@ -307,7 +376,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       player.play();
       return;
     }
-    
+
     // Otherwise, try to go to previous track in context
     const prevTrack = getNextTrackFromContext(-1);
     if (prevTrack) {
@@ -322,7 +391,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const toggleShuffle = () => {
     const newShuffle = !shuffleMode;
     setShuffleMode(newShuffle);
-    
+
     const { currentTrack: ct, playbackContext: ctx } = stateRef.current;
     if (ctx && ctx.tracks.length > 0) {
       if (newShuffle) {
@@ -337,11 +406,35 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const toggleRepeat = () => {
     setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none');
   };
-  
+
   const addToQueue = (track: Track) => {
     setQueue(prev => [...prev, track]);
   };
-  
+
+  const removeFromQueue = (index: number) => {
+    setQueue(prev => {
+      const copy = [...prev];
+      copy.splice(index, 1);
+      return copy;
+    });
+  };
+
+  const reorderQueue = (fromIndex: number, toIndex: number) => {
+    setQueue(prev => {
+      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) {
+        return prev;
+      }
+      const copy = [...prev];
+      const [moved] = copy.splice(fromIndex, 1);
+      copy.splice(toIndex, 0, moved);
+      return copy;
+    });
+  };
+
+  const setFullQueue = (tracks: Track[]) => {
+    setQueue(tracks);
+  };
+
   const clearQueue = () => {
     setQueue([]);
   };
@@ -351,9 +444,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const seek = async (ms: number) => { await player.seekTo(ms / 1000); };
 
   return (
-    <AudioContext.Provider value={{ 
+    <AudioContext.Provider value={{
       currentTrack, playbackContext, queue, shuffleMode, repeatMode, isResolving, player,
-      playTrack, pause, resume, seek, next, previous, toggleShuffle, toggleRepeat, addToQueue, clearQueue
+      playTrack, pause, resume, seek, next, previous, toggleShuffle, toggleRepeat,
+      addToQueue, removeFromQueue, reorderQueue, setFullQueue, clearQueue
     }}>
       {children}
     </AudioContext.Provider>

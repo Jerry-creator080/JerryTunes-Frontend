@@ -35,3 +35,14 @@ To run the app on a physical iPhone with background audio support:
 2. `eas device:create`
 3. `eas build --profile development --platform ios`
 4. Scan the QR code, install, and run `npx expo start --dev-client`.
+
+## 6. Features Ported from iKoda (Koda Architecture)
+This copy (`JerryTunes_Koda`) integrates the following core capabilities adapted from `Ivorisnoob/iKoda`:
+1. **Synchronized Karaoke Lyrics Engine:**
+   * **Backend:** `/api/lyrics` on Express proxy querying LRCLIB with sanitized metadata and title-fallback search.
+   * **Frontend:** `LyricsView.tsx` component with `.lrc` timestamp parsing, auto-scrolling to active lines, and tap-to-seek functionality.
+   * **UI Integration:** Toggle button in `NowPlayingScreen.tsx` switching between album artwork and synchronized lyrics while preserving all locked duration and scrubbing safeguards.
+2. **Koda-Style Dynamic Home Recommendations:**
+   * **Backend:** `/api/home` fetching Quick Picks and Trending Charts.
+   * **Frontend:** `HomeScreen.tsx` upgraded with horizontal carousels for "Quick Picks" and "Trending Hits" alongside "Recently Played".
+

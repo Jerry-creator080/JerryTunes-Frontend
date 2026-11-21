@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 const getApiUrl = () => {
-  if (Platform.OS === 'web') return 'http://localhost:3000';
+  if (Platform.OS === 'web') return 'http://localhost:3001';
   
   // Try to use hostUri first, which is standard in Expo Go
   let localhost = Constants.expoConfig?.hostUri?.split(':')[0];
@@ -16,9 +16,9 @@ const getApiUrl = () => {
   }
   
   // If all else fails, use localhost (will only work on simulator/web)
-  if (!localhost) return 'http://localhost:3000';
+  if (!localhost) return 'http://localhost:3001';
   
-  return `http://${localhost}:3000`;
+  return `http://${localhost}:3001`;
 };
 
 export const API_URL = getApiUrl();
