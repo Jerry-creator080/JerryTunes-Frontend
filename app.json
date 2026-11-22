@@ -1,11 +1,24 @@
 {
   "expo": {
     "name": "Koda",
-    "slug": "koda-app",
+    "slug": "JerryTunes",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/d61c47f6-c190-4c6c-acf5-9e9694c0056e",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "useNativeDebug": true,
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
+    },
     "ios": {
       "bundleIdentifier": "com.jerrytunes.app",
       "supportsTablet": true,
@@ -45,7 +58,8 @@
         }
       ],
       "expo-video",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-updates"
     ],
     "extra": {
       "eas": {
