@@ -1237,9 +1237,84 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'rgba(255, 149, 0, 0.25)',
   },
-  offlineBannerBtnText: {
+   offlineBannerBtnText: {
     color: '#FF9500',
     fontSize: 12,
     fontWeight: '700',
   },
-});
+  downloadedAlbumWrapper: {
+    marginBottom: 12,
+  },
+  expandToggleBtn: {
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  albumTracklistContainer: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    marginTop: 8,
+    padding: 12,
+  },
+  tracklistHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  tracklistHeaderText: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  openAlbumPageText: {
+    color: '#0A84FF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  albumTrackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 10,
+  },
+  albumTrackRowPlaying: {
+    backgroundColor: 'rgba(10,132,255,0.10)',
+    borderRadius: 8,
+  },
+  albumTrackNum: {
+    width: 22,
+    color: '#8E8E93',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  albumTrackInfo: {
+    flex: 1,
+  },
+  albumTrackTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  albumTrackArtist: {
+    color: '#8E8E93',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  downloadGreenCheck: {
+  width: 18,
+  height: 18,
+  borderRadius: 9,
+  backgroundColor: '#34C759',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+  albumTrackDuration: {
+    color: '#8E8E93',
+    fontSize: 11,
+    minWidth: 38,
+    textAlign: 'right',
+  },
+}); 

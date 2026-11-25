@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Koda",
@@ -30,6 +31,7 @@
     },
     "android": {
       "package": "com.jerrytunes.app",
+      "usesCleartextTraffic": true,
       "permissions": [
         "WAKE_LOCK",
         "FOREGROUND_SERVICE",
