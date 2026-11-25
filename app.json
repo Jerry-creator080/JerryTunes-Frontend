@@ -1,7 +1,6 @@
-
 {
   "expo": {
-    "name": "Koda",
+    "name": "JerryTunes",
     "slug": "JerryTunes",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,7 +14,6 @@
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0,
-      "useNativeDebug": true,
       "requestHeaders": {
         "expo-channel-name": "production"
       }
@@ -31,7 +29,6 @@
     },
     "android": {
       "package": "com.jerrytunes.app",
-      "usesCleartextTraffic": true,
       "permissions": [
         "WAKE_LOCK",
         "FOREGROUND_SERVICE",
@@ -61,7 +58,9 @@
       ],
       "expo-video",
       "expo-status-bar",
-      "expo-updates"
+      "expo-updates",
+      "./plugins/withCleartextTraffic",
+      "./plugins/withReleaseSigning"
     ],
     "extra": {
       "eas": {

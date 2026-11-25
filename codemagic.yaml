@@ -1,17 +1,38 @@
 workflows:
   android-apk:
-    name: Android APK Build
+    name: Android Release APK Build
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
-      node: 20
+      groups:
+        - keystore_credentials
+      node: 22
       java: 17
       vars:
         PACKAGE_NAME: "com.jerrytunes.app"
+        CM_KEYSTORE_PATH: "/tmp/jerrytunes-release.keystore"
     scripts:
       - name: Install dependencies
         script: |
-          npm install --legacy-peer-deps
+          npm ci --legacy-peer-deps
+
+      - name: TypeScript check
+        script: |
+          npm run typecheck
+
+      - name: Decode and verify Android release keystore
+        script: |
+          set -e
+          for var in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              echo "ERROR: Missing required Codemagic secret environment variable: $var"
+              echo "Add it to the 'keystore_credentials' environment variable group in Codemagic."
+              exit 1
+            fi
+          done
+          printf '%s' "$CM_KEYSTORE" | tr -d '\r\n ' | base64 --decode > "$CM_KEYSTORE_PATH"
+          test -s "$CM_KEYSTORE_PATH"
+          keytool -list -keystore "$CM_KEYSTORE_PATH" -storepass "$CM_KEYSTORE_PASSWORD" -alias "$CM_KEY_ALIAS" > /dev/null
 
       - name: Generate Android native project (Expo Prebuild)
         script: |
@@ -21,10 +42,79 @@ workflows:
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
 
-      - name: Build Android Debug APK
+      - name: Build Signed Android Release APK
         script: |
           cd android
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Verify Signed Release APK artifact
+        script: |
+          APK_PATH="$CM_BUILD_DIR/android/app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            echo "Expected release APK not found at $APK_PATH"
+            exit 1
+          fi
+          ls -lh "$APK_PATH"
 
     artifacts:
-      - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/apk/release/*.apk
+
+  android-aab:
+    name: Android Play Store AAB Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - keystore_credentials
+      node: 22
+      java: 17
+      vars:
+        PACKAGE_NAME: "com.jerrytunes.app"
+        CM_KEYSTORE_PATH: "/tmp/jerrytunes-release.keystore"
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci --legacy-peer-deps
+
+      - name: TypeScript check
+        script: |
+          npm run typecheck
+
+      - name: Decode and verify Android release keystore
+        script: |
+          set -e
+          for var in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              echo "ERROR: Missing required Codemagic secret environment variable: $var"
+              echo "Add it to the 'keystore_credentials' environment variable group in Codemagic."
+              exit 1
+            fi
+          done
+          printf '%s' "$CM_KEYSTORE" | tr -d '\r\n ' | base64 --decode > "$CM_KEYSTORE_PATH"
+          test -s "$CM_KEYSTORE_PATH"
+          keytool -list -keystore "$CM_KEYSTORE_PATH" -storepass "$CM_KEYSTORE_PASSWORD" -alias "$CM_KEY_ALIAS" > /dev/null
+
+      - name: Generate Android native project (Expo Prebuild)
+        script: |
+          npx expo prebuild --platform android --clean
+
+      - name: Set up local.properties
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
+
+      - name: Build Signed Android Release AAB
+        script: |
+          cd android
+          ./gradlew bundleRelease --no-daemon
+
+      - name: Verify Signed Release AAB artifact
+        script: |
+          AAB_PATH="$CM_BUILD_DIR/android/app/build/outputs/bundle/release/app-release.aab"
+          if [ ! -f "$AAB_PATH" ]; then
+            echo "Expected release AAB not found at $AAB_PATH"
+            exit 1
+          fi
+          ls -lh "$AAB_PATH"
+
+    artifacts:
+      - android/app/build/outputs/bundle/release/*.aab
